@@ -76,6 +76,8 @@ def iterips(resources):
         resource_type, name = key.split('.', 1)
         if resource_type == 'openstack_compute_floatingip_associate_v2':
             yield openstack_floating_ips(resource)
+        if resource_type == 'opentelekomcloud_compute_floatingip_associate_v2':
+            yield openstack_floating_ips(resource)
 
 
 def parses(prefix):
@@ -321,6 +323,89 @@ def openstack_floating_ips(resource):
 @parses('openstack_compute_instance_v2')
 @calculate_mantl_vars
 def openstack_host(resource, module_name):
+    raw_attrs = resource['primary']['attributes']
+    name = raw_attrs['name']
+    groups = []
+
+    attrs = {
+        'access_ip_v4': raw_attrs['access_ip_v4'],
+        'access_ip_v6': raw_attrs['access_ip_v6'],
+        'ip': raw_attrs['network.0.fixed_ip_v4'],
+        'flavor': parse_dict(raw_attrs, 'flavor',
+                             sep='_'),
+        'id': raw_attrs['id'],
+        'image': parse_dict(raw_attrs, 'image',
+                            sep='_'),
+        'key_pair': raw_attrs['key_pair'],
+        'metadata': parse_dict(raw_attrs, 'metadata'),
+        'network': parse_attr_list(raw_attrs, 'network'),
+        'region': raw_attrs.get('region', ''),
+        'security_groups': parse_list(raw_attrs, 'security_groups'),
+        # ansible
+        'ansible_ssh_port': 22,
+        # workaround for an OpenStack bug where hosts have a different domain
+        # after they're restarted
+        'host_domain': 'novalocal',
+        'use_host_domain': True,
+        # generic
+        'public_ipv4': raw_attrs['access_ip_v4'],
+        'private_ipv4': raw_attrs['access_ip_v4'],
+        'provider': 'openstack',
+    }
+
+    if 'floating_ip' in raw_attrs:
+        attrs['private_ipv4'] = raw_attrs['network.0.fixed_ip_v4']
+
+    try:
+        attrs.update({
+            'ansible_ssh_host': raw_attrs['access_ip_v4'],
+            'publicly_routable': True,
+        })
+    except (KeyError, ValueError):
+        attrs.update({'ansible_ssh_host': '', 'publicly_routable': False})
+
+    # Handling of floating IPs has changed: https://github.com/terraform-providers/terraform-provider-openstack/blob/master/CHANGELOG.md#010-june-21-2017
+
+    # attrs specific to Ansible
+    if 'metadata.ssh_user' in raw_attrs:
+        attrs['ansible_ssh_user'] = raw_attrs['metadata.ssh_user']
+
+    if 'volume.#' in raw_attrs.keys() and int(raw_attrs['volume.#']) > 0:
+        device_index = 1
+        for key, value in raw_attrs.items():
+            match = re.search("^volume.*.device$", key)
+            if match:
+                attrs['disk_volume_device_'+str(device_index)] = value
+                device_index += 1
+
+
+    # attrs specific to Mantl
+    attrs.update({
+        'consul_dc': _clean_dc(attrs['metadata'].get('dc', module_name)),
+        'role': attrs['metadata'].get('role', 'none'),
+        'ansible_python_interpreter': attrs['metadata'].get('python_bin','python')
+    })
+
+    # add groups based on attrs
+    groups.append('os_image=' + attrs['image']['name'])
+    groups.append('os_flavor=' + attrs['flavor']['name'])
+    groups.extend('os_metadata_%s=%s' % item
+                  for item in attrs['metadata'].items())
+    groups.append('os_region=' + attrs['region'])
+
+    # groups specific to Mantl
+    groups.append('role=' + attrs['metadata'].get('role', 'none'))
+    groups.append('dc=' + attrs['consul_dc'])
+
+    # groups specific to kubespray
+    for group in attrs['metadata'].get('kubespray_groups', "").split(","):
+        groups.append(group)
+
+    return name, attrs, groups
+
+@parses('opentelekomcloud_compute_instance_v2')
+@calculate_mantl_vars
+def opentelekomcloud_host(resource, module_name):
     raw_attrs = resource['primary']['attributes']
     name = raw_attrs['name']
     groups = []
