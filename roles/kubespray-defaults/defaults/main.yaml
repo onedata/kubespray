@@ -13,7 +13,7 @@ kube_api_anonymous_auth: false
 is_atomic: false
 
 ## Change this to use another Kubernetes version, e.g. a current beta release
-kube_version: v1.9.0
+kube_version: v1.9.1
 
 # Set to true to allow pre-checks to fail and continue deployment
 ignore_assert_errors: false
@@ -33,8 +33,12 @@ retry_stagger: 5
 cluster_name: cluster.local
 # Subdomains of DNS domain to be resolved via /etc/resolv.conf for hostnet pods
 ndots: 2
-# Can be dnsmasq_kubedns, kubedns or none
+# Can be dnsmasq_kubedns, kubedns, manual or none
 dns_mode: kubedns
+
+# Should be set to a cluster IP if using a custom cluster DNS
+# manual_dns_server: 10.x.x.x
+
 # Can be docker_dns, host_resolvconf or none
 resolvconf_mode: docker_dns
 # Deploy netchecker app to verify DNS resolve as an HTTP service
@@ -95,7 +99,15 @@ kube_pods_subnet: 10.233.64.0/18
 
 # internal network node size allocation (optional). This is the size allocated
 # to each node on your network.  With these defaults you should have
-# room for 4096 nodes with 254 pods per node.
+# room for 64 nodes with 254 pods per node.
+# Example: Up to 256 nodes, 100 pods per node (/16 network):
+#  - kube_service_addresses: 10.233.0.0/17
+#  - kube_pods_subnet: 10.233.128.0/17
+#  - kube_network_node_prefix: 25
+# Example: Up to 4096 nodes, 100 pods per node (/12 network):
+#  - kube_service_addresses: 10.192.0.0/13
+#  - kube_pods_subnet: 10.200.0.0/13
+#  - kube_network_node_prefix: 25
 kube_network_node_prefix: 24
 
 # The virtual cluster IP, real host IPs and ports the API Server will be
@@ -225,6 +237,18 @@ kube_apiserver_endpoint: |-
   {%- endif %}
 kube_apiserver_insecure_endpoint: >-
   http://{{ kube_apiserver_insecure_bind_address | regex_replace('0\.0\.0\.0','127.0.0.1') }}:{{ kube_apiserver_insecure_port }}
+kube_apiserver_client_cert: |-
+  {% if kubeadm_enabled -%}
+  {{ kube_cert_dir }}/ca.crt
+  {%- else -%}
+  {{ kube_cert_dir }}/apiserver.pem
+  {%- endif %}
+kube_apiserver_client_key: |-
+  {% if kubeadm_enabled -%}
+  {{ kube_cert_dir }}/ca.key
+  {%- else -%}
+  {{ kube_cert_dir }}/apiserver-key.pem
+  {%- endif %}
 
 # Vars for pointing to etcd endpoints
 is_etcd_master: "{{ inventory_hostname in groups['etcd'] }}"
