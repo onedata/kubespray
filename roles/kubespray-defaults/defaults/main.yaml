@@ -13,7 +13,7 @@ kube_api_anonymous_auth: false
 is_atomic: false
 
 ## Change this to use another Kubernetes version, e.g. a current beta release
-kube_version: v1.9.1
+kube_version: v1.9.2
 
 # Set to true to allow pre-checks to fail and continue deployment
 ignore_assert_errors: false
@@ -154,6 +154,10 @@ kubectl_localhost: false
 # K8s image pull policy (imagePullPolicy)
 k8s_image_pull_policy: IfNotPresent
 
+# Kubernetes dashboard
+# RBAC required. see docs/getting-started.md for access details.
+dashboard_enabled: true
+
 # Addons which can be enabled
 efk_enabled: false
 helm_enabled: false
@@ -165,16 +169,21 @@ persistent_volumes_enabled: false
 # Base path for local volume provisioner addon
 local_volume_base_dir: /mnt/disks
 
-## When OpenStack is used, Cinder version can be explicitly specified if autodetection fails (https://github.com/kubernetes/kubernetes/issues/50461)
+## When OpenStack is used, Cinder version can be explicitly specified if autodetection fails (Fixed in 1.9: https://github.com/kubernetes/kubernetes/issues/50461)
 # openstack_blockstorage_version: "v1/v2/auto (default)"
-## When OpenStack is used, if LBaaSv2 is available you can enable it with the following variables.
+## When OpenStack is used, if LBaaSv2 is available you can enable it with the following 2 variables.
 openstack_lbaas_enabled: false
 # openstack_lbaas_subnet_id: "Neutron subnet ID (not network ID) to create LBaaS VIP"
+## To enable automatic floating ip provisioning, specify a subnet.
 # openstack_lbaas_floating_network_id: "Neutron network ID (not subnet ID) to get floating IP from, disabled by default"
-# openstack_lbaas_create_monitor: "yes"
-# openstack_lbaas_monitor_delay: false
-# openstack_lbaas_monitor_timeout: false
-# openstack_lbaas_monitor_max_retries: false
+## Override default LBaaS behavior
+# openstack_lbaas_use_octavia: False
+# openstack_lbaas_method: "ROUND_ROBIN"
+# openstack_lbaas_provider: "haproxy"
+openstack_lbaas_create_monitor: "yes"
+openstack_lbaas_monitor_delay: "1m"
+openstack_lbaas_monitor_timeout: "30s"
+openstack_lbaas_monitor_max_retries: "3"
 
 ## List of authorization modes that must be configured for
 ## the k8s cluster. Only 'AlwaysAllow', 'AlwaysDeny', 'Node' and
@@ -192,6 +201,26 @@ vault_cert_dir: "{{ vault_base_dir }}/ssl"
 vault_config_dir: "{{ vault_base_dir }}/config"
 vault_roles_dir: "{{ vault_base_dir }}/roles"
 vault_secrets_dir: "{{ vault_base_dir }}/secrets"
+
+## Running on top of openstack vms with cinder enabled may lead to unschedulable pods due to NoVolumeZoneConflict restriction in kube-scheduler.
+## See https://github.com/kubernetes-incubator/kubespray/issues/2141
+## Set this variable to true to get rid of this issue
+volume_cross_zone_attachment: false
+
+# weave's network password for encryption
+# if null then no network encryption
+# you can use --extra-vars to pass the password in command line
+weave_password: EnterPasswordHere
+
+# Weave uses consensus mode by default
+# Enabling seed mode allow to dynamically add or remove hosts
+# https://www.weave.works/docs/net/latest/ipam/
+weave_mode_seed: false
+
+# This two variable are automatically changed by the weave's role in group_vars/k8s-cluster.yml.
+# Do not manually change these values
+weave_seed: uninitialized
+weave_peers: uninitialized
 
 ## Set no_proxy to all assigned cluster IPs and hostnames
 no_proxy: >-
